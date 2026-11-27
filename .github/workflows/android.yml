@@ -1,7 +1,7 @@
 name: Android APK (RM0)
 on:
   push:
-    branches: [build/android-v0.8.1]
+    branches: [build/android-v0.8.1, sync/main-from-android-build]
   workflow_dispatch:
 permissions:
   contents: read
