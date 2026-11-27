@@ -1,0 +1,30 @@
+package org.msa.graphics;
+import android.content.Context;
+import android.opengl.GLES30;
+import android.opengl.GLSurfaceView;
+import android.opengl.Matrix;
+import android.view.MotionEvent;
+import java.nio.*;
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
+
+/** Independent, on-demand indexed lit sphere and instanced markers renderer. GL objects belong to GL thread. */
+final class NativeScene extends GLSurfaceView {
+ private final Scene renderer = new Scene(); private float lastX,lastY; private boolean pinching; private final android.view.ScaleGestureDetector scale;
+ NativeScene(Context c){super(c);scale=new android.view.ScaleGestureDetector(c,new android.view.ScaleGestureDetector.SimpleOnScaleGestureListener(){ public boolean onScale(android.view.ScaleGestureDetector d){float f=d.getScaleFactor();if(Float.isFinite(f)&&f>0){queueEvent(()->renderer.distance=Math.max(3,Math.min(20,renderer.distance/f)));requestRender();}return true;}});setEGLContextClientVersion(3);setEGLConfigChooser(8,8,8,8,16,0);setRenderer(renderer);setRenderMode(RENDERMODE_WHEN_DIRTY);}
+ @Override public boolean onTouchEvent(MotionEvent e){scale.onTouchEvent(e);if(e.getPointerCount()>1){pinching=true;return true;}if(pinching){lastX=e.getX();lastY=e.getY();pinching=false;return true;}if(e.getActionMasked()==MotionEvent.ACTION_DOWN){lastX=e.getX();lastY=e.getY();return true;}if(e.getActionMasked()==MotionEvent.ACTION_MOVE&&e.getPointerCount()==1){float dx=e.getX()-lastX,dy=e.getY()-lastY;lastX=e.getX();lastY=e.getY();queueEvent(()->{renderer.yaw=(renderer.yaw+dx*.5f)%360;renderer.pitch=Math.max(-85,Math.min(85,renderer.pitch+dy*.5f));});requestRender();return true;}return true;}
+ void thermal(int status){queueEvent(()->renderer.thermal=status);requestRender();}
+ private static final class Scene implements GLSurfaceView.Renderer {
+  int thermal=0; float yaw=25,pitch=20,distance=6; int program,vao,uniform,indexCount; final int[] buffers=new int[2]; final float[] projection=new float[16],view=new float[16],model=new float[16],mv=new float[16],mvp=new float[16];
+  static int shader(int type,String source){int s=GLES30.glCreateShader(type);GLES30.glShaderSource(s,source);GLES30.glCompileShader(s);int[] ok=new int[1];GLES30.glGetShaderiv(s,GLES30.GL_COMPILE_STATUS,ok,0);if(ok[0]==0){String log=GLES30.glGetShaderInfoLog(s);GLES30.glDeleteShader(s);throw new IllegalStateException(log);}return s;}
+  public void onSurfaceCreated(GL10 gl,EGLConfig config){program=0;vao=0;buffers[0]=buffers[1]=0;try{int vs=shader(GLES30.GL_VERTEX_SHADER,"#version 300 es\nlayout(location=0) in vec3 p; uniform mat4 mvp; out vec3 n; void main(){n=normalize(p); vec3 offset=vec3(float(gl_InstanceID%3)-1.0,float(gl_InstanceID/3)-1.0,0.0)*1.4; gl_Position=mvp*vec4(p*0.55+offset,1.0);}");int fs=0;try{fs=shader(GLES30.GL_FRAGMENT_SHADER,"#version 300 es\nprecision mediump float; in vec3 n; out vec4 color; void main(){float l=0.2+0.8*max(0.0,dot(normalize(n),normalize(vec3(0.4,0.8,1.0))));color=vec4(vec3(0.2,0.85,1.0)*l,1.0);}");program=GLES30.glCreateProgram();GLES30.glAttachShader(program,vs);GLES30.glAttachShader(program,fs);GLES30.glLinkProgram(program);int[] ok=new int[1];GLES30.glGetProgramiv(program,GLES30.GL_LINK_STATUS,ok,0);if(ok[0]==0)throw new IllegalStateException(GLES30.glGetProgramInfoLog(program));}finally{GLES30.glDeleteShader(vs);if(fs!=0)GLES30.glDeleteShader(fs);}
+   int segments=32,rings=16; float[] p=new float[(segments+1)*(rings+1)*3]; short[] ix=new short[segments*rings*6]; int v=0,k=0;
+   for(int j=0;j<=rings;j++)for(int i=0;i<=segments;i++){double a=2*Math.PI*i/segments,b=Math.PI*j/rings;p[v++]=(float)(Math.cos(a)*Math.sin(b));p[v++]=(float)Math.cos(b);p[v++]=(float)(Math.sin(a)*Math.sin(b));}
+   for(int j=0;j<rings;j++)for(int i=0;i<segments;i++){short a=(short)(j*(segments+1)+i),b=(short)(a+segments+1);ix[k++]=a;ix[k++]=b;ix[k++]=(short)(a+1);ix[k++]=(short)(a+1);ix[k++]=b;ix[k++]=(short)(b+1);}indexCount=ix.length;
+   android.util.Log.i("MSAGraphics", "GL renderer: "+GLES30.glGetString(GLES30.GL_RENDERER)+" version: "+GLES30.glGetString(GLES30.GL_VERSION));
+   FloatBuffer vertices=ByteBuffer.allocateDirect(p.length*4).order(ByteOrder.nativeOrder()).asFloatBuffer();vertices.put(p).position(0);ShortBuffer indices=ByteBuffer.allocateDirect(ix.length*2).order(ByteOrder.nativeOrder()).asShortBuffer();indices.put(ix).position(0);uniform=GLES30.glGetUniformLocation(program,"mvp");int[] ids=buffers,a=new int[1];GLES30.glGenVertexArrays(1,a,0);vao=a[0];GLES30.glBindVertexArray(vao);GLES30.glGenBuffers(2,ids,0);GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,ids[0]);GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER,p.length*4,vertices,GLES30.GL_STATIC_DRAW);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,0);GLES30.glEnableVertexAttribArray(0);GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER,ids[1]);GLES30.glBufferData(GLES30.GL_ELEMENT_ARRAY_BUFFER,ix.length*2,indices,GLES30.GL_STATIC_DRAW);GLES30.glBindVertexArray(0);GLES30.glEnable(GLES30.GL_DEPTH_TEST);
+  }catch(RuntimeException e){android.util.Log.e("MSAGraphics","Native setup failed",e);GLES30.glDeleteBuffers(2,buffers,0);if(vao!=0)GLES30.glDeleteVertexArrays(1,new int[]{vao},0);if(program!=0)GLES30.glDeleteProgram(program);program=0;}}
+  public void onSurfaceChanged(GL10 gl,int w,int h){GLES30.glViewport(0,0,w,h);Matrix.perspectiveM(projection,0,45,Math.max(1,w)/(float)Math.max(1,h),.1f,100);}
+  public void onDrawFrame(GL10 gl){GLES30.glClearColor(program==0?.3f:.025f,.06f,.1f,1);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT|GLES30.GL_DEPTH_BUFFER_BIT);if(program==0||thermal>=5)return;Matrix.setLookAtM(view,0,0,0,distance,0,0,0,0,1,0);Matrix.setIdentityM(model,0);Matrix.rotateM(model,0,pitch,1,0,0);Matrix.rotateM(model,0,yaw,0,1,0);Matrix.multiplyMM(mv,0,view,0,model,0);Matrix.multiplyMM(mvp,0,projection,0,mv,0);GLES30.glUseProgram(program);GLES30.glUniformMatrix4fv(uniform,1,false,mvp,0);GLES30.glBindVertexArray(vao);GLES30.glDrawElementsInstanced(GLES30.GL_TRIANGLES,indexCount,GLES30.GL_UNSIGNED_SHORT,0,thermal>=3?3:9);GLES30.glBindVertexArray(0);}
+ }
+}
