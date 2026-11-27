@@ -1,0 +1,8 @@
+export const profiles=Object.freeze({low:Object.freeze({width:640,height:360,mesh:128}),balanced:Object.freeze({width:960,height:540,mesh:256}),high:Object.freeze({width:1280,height:720,mesh:384})});
+const ranges=Object.freeze({depth:[0.5,10],period:[0.5,10],amplitude:[0,0.5]});
+export function command(state,cmd){if(!cmd||!Object.hasOwn(ranges,cmd.action)||typeof cmd.value!=='number'||!Number.isFinite(cmd.value))throw Error('Invalid command');const [a,b]=ranges[cmd.action];if(cmd.value<a||cmd.value>b)throw Error('Out of range');return {...state,[cmd.action]:cmd.value};}
+let cached;
+export function waveNumber(depth,period){if(cached&&cached.depth===depth&&cached.period===period)return cached.k;if(!Number.isFinite(depth)||!Number.isFinite(period)||depth<=0||period<=0)throw Error('Invalid wave parameters');const w=2*Math.PI/period;let lo=0,hi=Math.max(w*w/9.81,w/Math.sqrt(9.81*depth),1);while(9.81*hi*Math.tanh(hi*depth)<w*w)hi*=2;for(let i=0;i<64;i++){const m=(lo+hi)/2;if(9.81*m*Math.tanh(m*depth)<w*w)lo=m;else hi=m;}const k=(lo+hi)/2;cached={depth,period,k};return k;}
+export function elevation(x,t,s){return s.amplitude*Math.cos(waveNumber(s.depth,s.period)*x-2*Math.PI*t/s.period);}
+export async function probeGPU(nav=globalThis.navigator){try{const a=await nav?.gpu?.requestAdapter();return a?{available:true,maxBufferSize:a.limits.maxBufferSize,maxStorageBufferBindingSize:a.limits.maxStorageBufferBindingSize}:{available:false};}catch{return {available:false};}}
+export function serialRender(fn){let busy=false;return async (...args)=>{if(busy)return false;busy=true;try{await fn(...args);return true;}finally{busy=false;}};}

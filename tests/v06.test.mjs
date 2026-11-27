@@ -1,0 +1,11 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {mesh,SceneGraph,field,camera,material,PhysicsWorld,ParticlePool,FrameStats} from '../engine/world.mjs';import {translation} from '../engine/spatial.mjs';
+for(let kind of ['plane','sphere','torus','cylinder','cone'])test('mesh '+kind,()=>{let m=mesh(kind,12,8);assert.equal(m.positions.length,351);assert.equal(m.normals.length,m.positions.length);assert.equal(m.indices.length,576);assert.ok(Math.max(...m.indices)<117);assert.ok(m.positions.every(Number.isFinite))});
+test('mesh bounds',()=>assert.throws(()=>mesh('sphere',999)));
+test('hierarchy',()=>{let g=new SceneGraph();g.add('a',null,translation([1,2,3]));g.add('b','a',translation([2,3,4]));assert.deepEqual(g.world('b').slice(12,15),[3,5,7]);assert.throws(()=>g.add('a'));assert.throws(()=>g.add('c','missing'))});
+test('field finite center',()=>{assert.equal(field(0,0,[{x:0,z:0,mass:4}],2),-1);assert.throws(()=>field(0,0,[],0))});
+test('camera distance',()=>assert.ok(Math.abs(Math.hypot(...camera(1,2,6))-6)<1e-9));
+test('material range',()=>{assert.equal(material([1,0,0]).roughness,.5);assert.throws(()=>material([2,0,0]))});
+test('floor bounce',()=>{let w=new PhysicsWorld();let b=w.add([0,1,0],[0,-2,0],1,1);w.step(1/60);assert.equal(b.position[1],1);assert.ok(b.velocity[1]>0);assert.throws(()=>w.step(1))});
+test('sphere collision momentum',()=>{let w=new PhysicsWorld([0,0,0]);let a=w.add([-1,3,0],[1,0,0],1,1),b=w.add([1,3,0],[-1,0,0],1,1);w.step(1/60);assert.ok(a.velocity[0]<0);assert.ok(Math.abs(a.velocity[0]+b.velocity[0])<1e-9)});
+test('particle reuse',()=>{let p=new ParticlePool(1);assert.ok(p.spawn([0,0,0],[1,0,0],.5));assert.equal(p.spawn([0,0,0],[0,0,0],1),false);p.step(.5);assert.ok(p.spawn([0,0,0],[0,0,0],1))});
+test('frame stats',()=>{let f=new FrameStats();assert.equal(f.report(),null);for(let i=0;i<150;i++)f.record(20);assert.deepEqual(f.report(),{fps:50,p95:20,count:120})});

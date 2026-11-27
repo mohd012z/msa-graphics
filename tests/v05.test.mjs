@@ -1,0 +1,14 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {cross,normalize,identity,multiply,translation,transform,quaternion,rotate,impulse,raySphere,validateGraph} from '../engine/spatial.mjs';
+test('orthogonal cross',()=>assert.deepEqual(cross([1,0,0],[0,1,0]),[0,0,1]));
+test('zero normalization rejected',()=>assert.throws(()=>normalize([0,0,0])));
+test('matrix translation composition',()=>assert.deepEqual(transform(multiply(translation([1,2,3]),identity()),[2,3,4,1]),[3,5,7,1]));
+test('quaternion quarter turn',()=>{let v=rotate(quaternion([0,0,1],Math.PI/2),[1,0,0]);assert.ok(Math.abs(v[0])<1e-10&&Math.abs(v[1]-1)<1e-10)});
+test('elastic collision equal masses',()=>assert.deepEqual(impulse(1,1,3,-2,1),[-2,3]));
+test('separating collision',()=>assert.deepEqual(impulse(1,1,-2,3,1),[-2,3]));
+test('invalid mass',()=>assert.throws(()=>impulse(0,1,3,-2,1)));
+test('ray hit and miss',()=>{assert.equal(raySphere([0,0,0],[1,0,0],[5,0,0],1),4);assert.equal(raySphere([0,0,0],[1,0,0],[0,5,0],1),null)});
+test('ray inside sphere',()=>assert.equal(raySphere([0,0,0],[1,0,0],[0,0,0],2),2));
+test('graph rejects dangling edge',()=>assert.throws(()=>validateGraph({nodes:[{id:'a'}],edges:[{from:'a',to:'b'}]})));
+test('graph rejects duplicate IDs',()=>assert.throws(()=>validateGraph({nodes:[{id:'a'},{id:'a'}],edges:[]})));
+test('graph accepts bounded data',()=>assert.deepEqual(validateGraph({nodes:[{id:'a',code:'ignored'}],edges:[]}),{nodes:[{id:'a'}],edges:[]}));

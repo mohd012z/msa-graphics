@@ -1,0 +1,14 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {decode, sample, slerp, matrix, Playback, particles, graphPulse} from '../engine/animation.mjs';
+const doc={version:1,duration:5,tracks:[{target:'object',property:'position',keys:[{time:0,value:[0,0,0]},{time:5,value:[10,0,0]}]}]};
+test('keyframe midpoint and clamping',()=>{const d=decode(JSON.stringify(doc));assert.deepEqual(sample(d,2.5).object.position,[5,0,0]);assert.deepEqual(sample(d,9).object.position,[10,0,0])});
+test('reject arbitrary properties',()=>assert.throws(()=>decode(JSON.stringify({...doc,tracks:[{...doc.tracks[0],property:'eval'}]}))));
+test('reject duplicate times',()=>assert.throws(()=>decode(JSON.stringify({...doc,tracks:[{...doc.tracks[0],keys:[doc.tracks[0].keys[0],doc.tracks[0].keys[0]]}]}))));
+test('quaternion shortest path',()=>assert.deepEqual(slerp([0,0,0,1],[0,0,0,-1],.5),[0,0,0,1]));
+test('matrix translation and scale',()=>{const m=matrix({position:[2,3,4],scale:[2,2,2]});assert.equal(m[0],2);assert.deepEqual(m.slice(12,15),[2,3,4])});
+test('playback loop and pause',()=>{const p=new Playback(5);p.seek(4.9);p.play();p.advance(.2);assert.ok(Math.abs(p.time-.1)<1e-8);p.pause();p.advance(.2);assert.ok(Math.abs(p.time-.1)<1e-8)});
+test('particles deterministic',()=>assert.deepEqual(particles(1,8),particles(1,8)));
+test('graph pulse validates bounds',()=>{assert.equal(graphPulse(0,3,1),0);assert.throws(()=>graphPulse(0,0,1))});
+test('reject zero quaternion',()=>assert.throws(()=>slerp([0,0,0,0],[0,0,0,1],.5)));
+test('smooth interpolation',()=>{let d=structuredClone(doc);d.tracks[0].keys[0].easing='smooth';assert.ok(Math.abs(sample(decode(JSON.stringify(d)),1).object.position[0]-1.04)<1e-9)});
+test('reject prototype targets',()=>assert.throws(()=>decode(JSON.stringify({...doc,tracks:[{...doc.tracks[0],target:'constructor'}]}))));
+test('hierarchy composition',async()=>{const {worldTransforms}=await import('../engine/animation.mjs');const w=worldTransforms([{id:'a',transform:{position:[1,0,0]}},{id:'b',parent:'a'}],{b:{position:[2,0,0]}});assert.equal(w.b[12],3)});
