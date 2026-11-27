@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {composition,activeClips,frameAt,timestampUs,spectrum,onset,imageMotion,saveProject,recoverProject} from '../engine/production.mjs';
+const raw=JSON.stringify({version:1,fps:30,frames:300,tracks:[{kind:'image',clips:[{id:'a',start:0,end:30}]}]});
+test('composition and half-open clip boundary',()=>{const p=composition(raw);assert.equal(activeClips(p,29)[0].progress,1);assert.equal(activeClips(p,30).length,0)});
+test('reject invalid clip',()=>assert.throws(()=>composition(raw.replace('"end":30','"end":301'))));
+test('reject duplicate ids',()=>{let p=JSON.parse(raw);p.tracks.push(p.tracks[0]);assert.throws(()=>composition(JSON.stringify(p)))});
+test('frame seek and clamp',()=>{assert.equal(frameAt(1.5,composition(raw)),45);assert.equal(frameAt(20,composition(raw)),299)});
+test('rational timestamps',()=>assert.equal(timestampUs(1800,30),60000000));
+test('FFT calibrated sine',()=>{const s=spectrum(Array.from({length:2048},(_,i)=>.5*Math.sin(2*Math.PI*32*i/2048)),48000);assert.ok(Math.abs(s.bins[32]-.5)<.001);assert.ok(Math.abs(s.rms-Math.sqrt(.125))<.001)});
+test('silence',()=>assert.equal(spectrum(new Float32Array(512),48000).rms,0));
+test('invalid PCM',()=>assert.throws(()=>spectrum(Array(32).fill(NaN),48000)));
+test('positive spectral flux',()=>assert.equal(onset([0,1],[1,0]),.5));
+test('image motion bounded',()=>{assert.equal(imageMotion(1).scale,1.2);assert.equal(imageMotion(.5,0).scale,1)});
+test('local backup recovery',()=>{const m=new Map(),s={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v)};saveProject(s,raw);saveProject(s,raw);m.set('msa-production','bad');assert.equal(recoverProject(s).frames,300)});

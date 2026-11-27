@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {command,waveNumber,elevation,probeGPU,serialRender,profiles} from '../engine/core.mjs';
+test('command immutable',()=>{const s={depth:1};assert.equal(command(s,{action:'depth',value:2}).depth,2);assert.equal(s.depth,1)});
+for(const cmd of [null,{action:'__proto__',value:1},{action:'constructor',value:1},{action:'depth',value:NaN},{action:'depth',value:99},{action:'depth',value:'2'}])test('reject '+JSON.stringify(cmd),()=>assert.throws(()=>command({},cmd)));
+test('dispersion residual',()=>{for(const h of [.5,1.5,10])for(const p of [.5,2,10]){const k=waveNumber(h,p);assert.ok(Math.abs(9.81*k*Math.tanh(k*h)-(2*Math.PI/p)**2)<1e-9)}});
+test('invalid depth',()=>assert.throws(()=>waveNumber(0,2)));test('periodic elevation',()=>assert.ok(Math.abs(elevation(0,2,{depth:1.5,period:2,amplitude:.3})-.3)<1e-10));
+test('GPU absence',async()=>assert.deepEqual(await probeGPU({}),{available:false}));test('GPU rejection',async()=>assert.deepEqual(await probeGPU({gpu:{requestAdapter:async()=>{throw Error()}}}),{available:false}));
+test('render lock',async()=>{let release;const f=serialRender(()=>new Promise(r=>release=r));const a=f();assert.equal(await f(),false);release();assert.equal(await a,true)});test('render failure unlock',async()=>{const f=serialRender(()=>{throw Error()});await assert.rejects(f());await assert.rejects(f())});test('profile bounds',()=>assert.ok(profiles.high.mesh<1500));

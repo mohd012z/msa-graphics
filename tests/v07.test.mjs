@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {fft2,spectralWater,spatialPairs,pick,quality,adapter} from '../engine/advanced.mjs';
+test('2D FFT round trip',()=>{let a=Float64Array.from({length:16},(_,i)=>Math.sin(i)),b=new Float64Array(16),c=a.slice();fft2(a,b,4);fft2(a,b,4,true);assert.ok(a.every((v,i)=>Math.abs(v-c[i])<1e-10));});
+test('2D FFT rejects malformed sizes',()=>assert.throws(()=>fft2([],[],3)));
+test('spectral amplitude and normal',()=>{let s=spectralWater(8,10,2,0,[{x:1,z:0,amplitude:2}]);assert.ok(Math.abs(s.heights[0]-2)<1e-10);assert.ok(Math.abs(s.heights[4]+2)<1e-10);assert.ok(Math.abs(Math.hypot(...s.normals.slice(0,3))-1)<1e-6)});
+test('depth changes propagation',()=>assert.notDeepEqual(spectralWater(8,10,1,1,[{x:1,z:0,amplitude:1}]).heights,spectralWater(8,10,10,1,[{x:1,z:0,amplitude:1}]).heights));
+test('spatial pairs cross cell boundary and deduplicate',()=>assert.deepEqual(spatialPairs([{position:[1.9,0,0],radius:.2},{position:[2.1,0,0],radius:.2},{position:[20,0,0],radius:.2}]),[[0,1]]));
+test('spatial oversized sphere rejected',()=>assert.throws(()=>spatialPairs([{position:[0,0,0],radius:2}])));
+test('pick nearest sphere',()=>assert.deepEqual(pick([0,0,0],[1,0,0],[{id:'far',position:[8,0,0],radius:1},{id:'near',position:[3,0,0],radius:1}]),{id:'near',distance:2}));
+test('thermal severe throttles',()=>{assert.equal(quality(3,10),'low');assert.equal(quality(0,16),'high');assert.equal(quality(0,30),'balanced')});
+test('adapter rejects unknown source and dangling edges',()=>{assert.throws(()=>adapter('unknown',{}));assert.throws(()=>adapter('rea',{nodes:[],edges:[{from:'x',to:'y'}]}));assert.equal(adapter('lola',{nodes:[{id:'a',code:'untrusted'}],edges:[]}).nodes[0].code,undefined)});

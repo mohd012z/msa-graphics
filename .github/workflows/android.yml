@@ -15,20 +15,41 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Verify source completeness
+      - name: Verify complete source and report all missing files
         shell: bash
         run: |
-          set -eu
-          test -f android/app/src/main/java/org/msa/graphics/MainActivity.java
-          test -f android/app/src/main/java/org/msa/graphics/NativeScene.java
-          for f in index.html app.mjs production.html production-ui.mjs production.mjs animation.html animation-ui.mjs animation.mjs graph.html graph.mjs lab.html lab.mjs core.mjs advanced.mjs fft.mjs integration.mjs project.mjs render.mjs simulation.mjs spatial.mjs world.mjs; do
-            test -s "android/app/src/main/assets/$f" || { echo "::error::Missing asset $f"; exit 1; }
+          set -euo pipefail
+          missing=0
+          required() {
+            if [[ ! -s "$1" ]]; then
+              echo "::error file=$1::Missing or empty required source"
+              missing=1
+            fi
+          }
+          required android/app/src/main/AndroidManifest.xml
+          required android/app/build.gradle
+          required android/app/src/main/java/org/msa/graphics/MainActivity.java
+          required android/app/src/main/java/org/msa/graphics/NativeScene.java
+          for name in index.html app.mjs production.html production-ui.mjs production.mjs animation.html animation-ui.mjs animation.mjs graph.html graph.mjs lab.html lab.mjs core.mjs advanced.mjs fft.mjs integration.mjs project.mjs render.mjs simulation.mjs spatial.mjs world.mjs; do
+            required "android/app/src/main/assets/$name"
           done
-          test -d tests
+          for name in advanced.mjs animation.mjs core.mjs fft.mjs integration.mjs production.mjs project.mjs render.mjs simulation.mjs spatial.mjs world.mjs; do
+            required "engine/$name"
+            if [[ -s "android/app/src/main/assets/$name" && -s "engine/$name" ]] && ! cmp -s "engine/$name" "android/app/src/main/assets/$name"; then
+              echo "::error file=engine/$name::Engine and Android asset differ"
+              missing=1
+            fi
+          done
+          for name in core.test.mjs v02.test.mjs v03.test.mjs v04.test.mjs v05.test.mjs v06.test.mjs v07.test.mjs v08.test.mjs v09.test.mjs v10.test.mjs v101.test.mjs; do
+            required "tests/$name"
+          done
+          if (( missing )); then exit 1; fi
+          echo "PASS: 21 assets, 11 engine modules, 11 test files, 2 Java sources"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test tests/*.test.mjs
+      - name: Run JavaScript tests
+        run: node --test tests/*.test.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -40,15 +61,22 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Compile APK
         run: gradle -p android assembleDebug --no-daemon
-      - name: Verify APK
+      - name: Verify signed debug APK
+        shell: bash
         run: |
+          set -euo pipefail
           APK=android/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
-          sha256sum "$APK" > "$APK.sha256"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee apk-metadata.txt
+          grep -F "package: name='org.msa.graphics' versionCode='12' versionName='0.10.2'" apk-metadata.txt
+          sha256sum "$APK" | tee apk-sha256.txt
       - uses: actions/upload-artifact@v4
         with:
           name: msa-graphics-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk*
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            apk-metadata.txt
+            apk-sha256.txt
           if-no-files-found: error
           retention-days: 1
