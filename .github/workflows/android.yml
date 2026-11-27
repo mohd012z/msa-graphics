@@ -1,0 +1,54 @@
+name: Android APK (RM0)
+on:
+  push:
+    branches: [build/android-v0.8.1]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    if: github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source completeness
+        shell: bash
+        run: |
+          set -eu
+          test -f android/app/src/main/java/org/msa/graphics/MainActivity.java
+          test -f android/app/src/main/java/org/msa/graphics/NativeScene.java
+          for f in index.html app.mjs production.html production-ui.mjs production.mjs animation.html animation-ui.mjs animation.mjs graph.html graph.mjs lab.html lab.mjs core.mjs advanced.mjs fft.mjs integration.mjs project.mjs render.mjs simulation.mjs spatial.mjs world.mjs; do
+            test -s "android/app/src/main/assets/$f" || { echo "::error::Missing asset $f"; exit 1; }
+          done
+          test -d tests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test tests/*.test.mjs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile APK
+        run: gradle -p android assembleDebug --no-daemon
+      - name: Verify APK
+        run: |
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" > "$APK.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msa-graphics-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk*
+          if-no-files-found: error
+          retention-days: 1
